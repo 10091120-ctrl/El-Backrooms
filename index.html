@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backrooms</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #e4e6a8;
+            font-family: monospace;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #111;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #e4e6a8;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px #000;
+            pointer-events: none;
+            line-height: 1.6;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="crosshair"></div>
+    <div id="hud">
+        USE [W, A, S, D] TO MOVE<br>
+        USE [MOUSE] OR [ARROW KEYS] TO LOOK<br>
+        FIND THE EXIT...
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Map: 1 = wall, 0 = empty space, 2 = exit
+    const map = [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+        [1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+        [1,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+        [1,0,1,0,1,0,0,0,1,1,0,1,1,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,0,1,0,1,0,1,0,1,0,0,0,1],
+        [1,0,0,0,1,0,0,0,0,0,0,1,0,0,1],
+        [1,0,1,0,0,0,1,0,1,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+    ];
+
+    let player = {
+        x: 1.5,
+        y: 1.5,
+        dir: 0, // angle in radians
+        fov: Math.PI / 3
+    };
+
+    const keys = {
+        w: false,
+        a: false,
+        s: false,
+        d: false,
+        ArrowLeft: false,
+        ArrowRight: false
+    };
+
+    window.addEventListener('keydown', e => {
+        if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+    });
+    window.addEventListener('keyup', e => {
+        if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+    });
+
+    window.addEventListener('mousemove', e => {
+        if (document.pointerLockElement === canvas) {
+            player.dir += e.movementX * 0.003;
+        }
+    });
+
+    canvas.addEventListener('click', () => {
+        canvas.requestPointerLock();
+    });
+
+    function update() {
+        const moveSpeed = 0.04;
+        const rotSpeed = 0.04;
+
+        if (keys.ArrowLeft) player.dir -= rotSpeed;
+        if (keys.ArrowRight) player.dir += rotSpeed;
+
+        let dx = 0;
+        let dy = 0;
+
+        if (keys.w) {
+            dx += Math.cos(player.dir) * moveSpeed;
+            dy += Math.sin(player.dir) * moveSpeed;
+        }
+        if (keys.s) {
+            dx -= Math.cos(player.dir) * moveSpeed;
+            dy -= Math.sin(player.dir) * moveSpeed;
+        }
+        if (keys.a) {
+            dx += Math.sin(player.dir) * moveSpeed;
+            dy -= Math.cos(player.dir) * moveSpeed;
+        }
+        if (keys.d) {
+            dx -= Math.sin(player.dir) * moveSpeed;
+            dy += Math.cos(player.dir) * moveSpeed;
+        }
+
+        const newX = player.x + dx;
+        const newY = player.y + dy;
+
+        if (map[Math.floor(player.y)][Math.floor(newX)] === 0) player.x = newX;
+        if (map[Math.floor(newY)][Math.floor(player.x)] === 0) player.y = newY;
+
+        // Check exit
+        if (map[Math.floor(player.y)][Math.floor(player.x)] === 2) {
+            alert('You escaped the Backrooms!');
+            player.x = 1.5;
+            player.y = 1.5;
+        }
+    }
+
+    function castRays() {
+        // Ceiling & Floor colors
+        ctx.fillStyle = '#26241a'; // Dark ceiling
+        ctx.fillRect(0, 0, canvas.width, canvas.height / 2);
+
+        ctx.fillStyle = '#423c24'; // Carpeted floor
+        ctx.fillRect(0, canvas.height / 2, canvas.width, canvas.height / 2);
+
+        const numRays = canvas.width;
+        const halfFov = player.fov / 2;
+
+        for (let i = 0; i < numRays; i++) {
+            const rayAngle = player.dir - halfFov + (i / numRays) * player.fov;
+            let distance = 0;
+            let hitWall = false;
+            let hitExit = false;
+
+            const eyeX = Math.cos(rayAngle);
+            const eyeY = Math.sin(rayAngle);
+
+            let rayX = player.x;
+            let rayY = player.y;
+
+            while (!hitWall && distance < 16) {
+                distance += 0.05;
+                rayX = player.x + eyeX * distance;
+                rayY = player.y + eyeY * distance;
+
+                const mapX = Math.floor(rayX);
+                const mapY = Math.floor(rayY);
+
+                if (mapX < 0 || mapX >= map[0].length || mapY < 0 || mapY >= map.length) {
+                    hitWall = true;
+                    distance = 16;
+                } else {
+                    if (map[mapY][mapX] === 1) {
+                        hitWall = true;
+                    } else if (map[mapY][mapX] === 2) {
+                        hitWall = true;
+                        hitExit = true;
+                    }
+                }
+            }
+
+            // Correct fish-eye
+            const correctedDist = distance * Math.cos(rayAngle - player.dir);
+            const wallHeight = Math.min(canvas.height, (canvas.height / correctedDist));
+
+            const ceiling = (canvas.height - wallHeight) / 2;
+
+            // Backrooms yellow wallpaper shading
+            const brightness = Math.max(0, 255 - distance * 18);
+            if (hitExit) {
+                ctx.fillStyle = `rgb(255, 255, 255)`;
+            } else {
+                ctx.fillStyle = `rgb(${brightness}, ${Math.floor(brightness * 0.85)}, ${Math.floor(brightness * 0.2)})`;
+            }
+
+            ctx.fillRect(i, ceiling, 1, wallHeight);
+        }
+    }
+
+    function loop() {
+        update();
+        castRays();
+        requestAnimationFrame(loop);
+    }
+
+    loop();
+</script>
+
+</body>
+</html>
